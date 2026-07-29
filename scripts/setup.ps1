@@ -85,12 +85,22 @@ function Test-PythonExe([string]$exe) {
     try {
         $out = & $exe -c 'import sys; print(str(sys.version_info[0]) + "." + str(sys.version_info[1]))' 2>$null
         if ($LASTEXITCODE -ne 0) { return $null }
-        # Ausgabe kann mehrzeilig sein - nur die erste Zeile auswerten.
-        $line = [string](@($out) | Where-Object { $_ } | Select-Object -First 1)
-        $m = [regex]::Match($line.Trim(), '^(\d+)\.(\d+)')
-        if (-not $m.Success) { return $null }
+
+        # Die Ausgabe kann mehrzeilig sein - manche Installationen schreiben
+        # vorher noch etwas auf stdout. Deshalb alle Zeilen durchsehen und die
+        # erste nehmen, die wie eine Version aussieht, statt blind die erste.
+        $m = $null
+        foreach ($line in @($out)) {
+            if (-not $line) { continue }
+            $cand = [regex]::Match(([string]$line).Trim(), '^(\d+)\.(\d+)')
+            if ($cand.Success) { $m = $cand; break }
+        }
+        if (-not $m) { return $null }
+
         $maj = [int]$m.Groups[1].Value
         $min = [int]$m.Groups[2].Value
+        # Untergrenze aus PlatformIOs eigener Metadatenangabe: Requires-Python >=3.6.
+        # Bewusst KEINE Obergrenze - neuere Versionen sollen durchgehen.
         if ($maj -lt 3) { return $null }
         if ($maj -eq 3 -and $min -lt 6) { return $null }
         return "$maj.$min"
@@ -205,15 +215,35 @@ if ($py) {
     } elseif (Get-Command winget -ErrorAction SilentlyContinue) {
         Step 'Python per winget installieren'
         Info 'Das dauert ein paar Minuten.'
-        try {
-            & winget install --exact --id Python.Python.3.12 --source winget `
-                --scope user --accept-source-agreements --accept-package-agreements
-        } catch {
-            Warn "winget brach ab: $($_.Exception.Message)"
+
+        # winget fuehrt jede Nebenversion als eigenes Paket. Neueste zuerst
+        # versuchen und nach jedem Versuch neu suchen - so ist es unabhaengig
+        # davon, welche Kennungen es gerade wirklich gibt.
+        #
+        # Kommt eine neue Python-Version heraus, hier vorne ergaenzen. Es
+        # schadet nichts, wenn eine Kennung nicht existiert: der Versuch
+        # scheitert, die Liste laeuft weiter.
+        $wingetIds = @(
+            'Python.Python.3.14',
+            'Python.Python.3.13',
+            'Python.Python.3.12'
+        )
+
+        foreach ($id in $wingetIds) {
+            Info "versuche $id"
+            try {
+                & winget install --exact --id $id --source winget `
+                    --scope user --accept-source-agreements --accept-package-agreements
+            } catch {
+                Warn "winget brach bei $id ab: $($_.Exception.Message)"
+            }
+            Sync-PathFromRegistry
+            $py = Find-Python
+            if ($py) { break }
         }
-        Sync-PathFromRegistry
-        $py = Find-Python
+
         if ($py) { Ok "Python $($py.Version) installiert"; Info $py.Exe }
+        else     { Warn 'Keine der winget-Kennungen hat funktioniert.' }
     } else {
         Info 'winget ist nicht verfuegbar.'
     }

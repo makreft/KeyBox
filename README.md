@@ -60,6 +60,17 @@ Bleibt es dabei: Python von [python.org](https://www.python.org/downloads/)
 installieren und **„Add python.exe to PATH" ankreuzen**. Die Store-Version
 funktioniert nicht zuverlässig.
 
+**Welche Python-Version?** Mindestens 3.6 — das ist PlatformIOs eigene
+Anforderung (`Requires-Python: >=3.6` in den Paketmetadaten). Nach oben gibt es
+**keine Grenze**: neuere Versionen werden akzeptiert, egal wie neu. Findet das
+Skript mehrere Installationen, nimmt es die höchste, die wirklich startet.
+
+Muss Python unter Windows nachinstalliert werden, probiert das Skript die
+winget-Kennungen von neu nach alt (`Python.Python.3.14`, `.3.13`, `.3.12`) und
+sucht nach jedem Versuch neu. Kommt eine neue Version heraus, kann man sie in
+`scripts/setup.ps1` vorne in die Liste eintragen — fehlende Kennungen sind
+unschädlich, der Versuch scheitert und die Liste läuft weiter.
+
 **Linux: venv fehlt.** Unter Debian und Ubuntu ist das ein eigenes Paket. Das
 Skript prüft es vorab und nennt den Befehl (`sudo apt install python3-venv`).
 
