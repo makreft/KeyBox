@@ -186,6 +186,112 @@ function Find-Python {
     return ($working | Sort-Object { [version]$_.Version } -Descending | Select-Object -First 1)
 }
 
+# ---------------------------------------------------------------------------
+# Rueckfall, wenn winget fehlt: Installer direkt von python.org holen.
+#
+# Auf verwalteten Rechnern ist der Microsoft Store haeufig gesperrt, und ohne
+# Store gibt es kein App-Installer-Paket und damit kein winget. Der offizielle
+# Installer laesst sich dagegen ohne Administratorrechte im Benutzerprofil
+# installieren.
+#
+# Vertrauensanker ist HTTPS zu python.org. Eine Pruefsumme verifizieren wir
+# nicht - wir muessten sie von derselben Quelle laden, was nichts hinzufuegt.
+# ---------------------------------------------------------------------------
+function Get-WindowsArchSuffix {
+    # Auf 64-Bit-Windows meldet eine 32-Bit-Shell "x86", die echte
+    # Architektur steht dann in PROCESSOR_ARCHITEW6432.
+    $a = $env:PROCESSOR_ARCHITEW6432
+    if (-not $a) { $a = $env:PROCESSOR_ARCHITECTURE }
+    switch ($a) {
+        'ARM64' { return 'arm64' }
+        'AMD64' { return 'amd64' }
+        'x86'   { return '' }      # 32 Bit: Datei heisst python-<version>.exe
+        default { return 'amd64' }
+    }
+}
+
+function Get-PythonInstallerUrl {
+    $arch = Get-WindowsArchSuffix
+
+    # Verzeichnisliste von python.org auswerten, neueste Version zuerst.
+    $versions = @()
+    try {
+        $listing = Invoke-WebRequest -Uri 'https://www.python.org/ftp/python/' `
+                       -UseBasicParsing -TimeoutSec 30
+        $versions = [regex]::Matches([string]$listing.Content, 'href="(3\.\d+\.\d+)/"') |
+                        ForEach-Object { $_.Groups[1].Value } |
+                        Select-Object -Unique |
+                        Sort-Object { [version]$_ } -Descending
+    } catch {
+        Warn 'Verzeichnisliste von python.org nicht erreichbar, nehme bekannte Versionen.'
+    }
+
+    # Bekannte Staende als Rueckfall anhaengen, falls die Liste leer blieb.
+    $versions = @($versions) + @('3.14.6', '3.13.5', '3.12.10')
+
+    # Wichtig: die Versionsnummer allein genuegt nicht. Fuer noch nicht
+    # fertige Versionen existiert das Verzeichnis bereits, enthaelt aber nur
+    # Vorabdateien - der reguläre Installer fehlt dann und liefert 404.
+    foreach ($v in $versions) {
+        $file = if ($arch) { "python-$v-$arch.exe" } else { "python-$v.exe" }
+        $url  = "https://www.python.org/ftp/python/$v/$file"
+        try {
+            $head = Invoke-WebRequest -Uri $url -Method Head -UseBasicParsing -TimeoutSec 20
+            if ($head.StatusCode -eq 200) {
+                return [pscustomobject]@{ Url = $url; File = $file; Version = $v }
+            }
+        } catch { }
+    }
+    return $null
+}
+
+function Install-PythonFromPythonOrg {
+    $sel = Get-PythonInstallerUrl
+    if (-not $sel) {
+        Warn 'Auf python.org war kein passender Installer auffindbar.'
+        return
+    }
+
+    Info "Version $($sel.Version) fuer $(Get-WindowsArchSuffix)"
+    $target = Join-Path $env:TEMP $sel.File
+
+    try {
+        # ProgressPreference bremst Invoke-WebRequest unter PowerShell 5.1 stark.
+        $oldProgress = $ProgressPreference
+        $ProgressPreference = 'SilentlyContinue'
+        Invoke-WebRequest -Uri $sel.Url -OutFile $target -UseBasicParsing -TimeoutSec 600
+        $ProgressPreference = $oldProgress
+    } catch {
+        Warn "Download fehlgeschlagen: $($_.Exception.Message)"
+        return
+    }
+
+    Info 'installiere still, nur fuer diesen Benutzer (keine Adminrechte noetig)'
+    try {
+        $proc = Start-Process -FilePath $target -Wait -PassThru -ArgumentList @(
+            '/quiet',
+            'InstallAllUsers=0',   # kein Adminrecht erforderlich
+            'PrependPath=1',       # traegt sich in den PATH ein
+            'Include_pip=1',
+            'Include_test=0'
+        )
+        if ($proc.ExitCode -ne 0) {
+            Warn "Installer endete mit Code $($proc.ExitCode)."
+        }
+    } catch {
+        Warn "Installer liess sich nicht starten: $($_.Exception.Message)"
+    } finally {
+        Remove-Item $target -Force -ErrorAction SilentlyContinue
+    }
+}
+
+# TLS 1.2 erzwingen - unter PowerShell 5.1 ist der Standard sonst zu alt fuer
+# manche Server.
+try {
+    [Net.ServicePointManager]::SecurityProtocol =
+        [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
+} catch { }
+
 Write-Host "KeyBox - Einrichtung (Windows)" -ForegroundColor White
 Write-Host "Projekt: $ProjectDir"
 
@@ -212,7 +318,10 @@ if ($py) {
         # im Pruefmodus nichts installieren
     } elseif ($NoPythonInstall) {
         Info 'Automatische Installation per -NoPythonInstall abgeschaltet.'
-    } elseif (Get-Command winget -ErrorAction SilentlyContinue) {
+    } else {
+
+    # Erst winget versuchen, wenn vorhanden.
+    if (Get-Command winget -ErrorAction SilentlyContinue) {
         Step 'Python per winget installieren'
         Info 'Das dauert ein paar Minuten.'
 
@@ -245,8 +354,20 @@ if ($py) {
         if ($py) { Ok "Python $($py.Version) installiert"; Info $py.Exe }
         else     { Warn 'Keine der winget-Kennungen hat funktioniert.' }
     } else {
-        Info 'winget ist nicht verfuegbar.'
+        Info 'winget ist nicht verfuegbar (Store gesperrt oder aelteres Windows).'
     }
+
+    # Rueckfall: Installer direkt von python.org. Greift, wenn winget fehlt
+    # oder alle winget-Versuche erfolglos blieben.
+    if (-not $py) {
+        Step 'Python direkt von python.org installieren'
+        Install-PythonFromPythonOrg
+        Sync-PathFromRegistry
+        $py = Find-Python
+        if ($py) { Ok "Python $($py.Version) installiert"; Info $py.Exe }
+    }
+
+    }   # Ende der Installationsversuche
 }
 
 if (-not $py -and -not $CheckOnly) {

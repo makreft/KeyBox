@@ -65,11 +65,27 @@ Anforderung (`Requires-Python: >=3.6` in den Paketmetadaten). Nach oben gibt es
 **keine Grenze**: neuere Versionen werden akzeptiert, egal wie neu. Findet das
 Skript mehrere Installationen, nimmt es die höchste, die wirklich startet.
 
-Muss Python unter Windows nachinstalliert werden, probiert das Skript die
-winget-Kennungen von neu nach alt (`Python.Python.3.14`, `.3.13`, `.3.12`) und
-sucht nach jedem Versuch neu. Kommt eine neue Version heraus, kann man sie in
-`scripts/setup.ps1` vorne in die Liste eintragen — fehlende Kennungen sind
-unschädlich, der Versuch scheitert und die Liste läuft weiter.
+Muss Python unter Windows nachinstalliert werden, geht das Skript zweistufig
+vor:
+
+1. **`winget`**, Kennungen von neu nach alt (`Python.Python.3.14`, `.3.13`,
+   `.3.12`), mit Neusuche nach jedem Versuch. Fehlende Kennungen sind
+   unschädlich — der Versuch scheitert und die Liste läuft weiter.
+2. **Direkt von python.org**, falls winget fehlt oder erfolglos bleibt. Der
+   Installer läuft still und **ohne Administratorrechte** (`InstallAllUsers=0`),
+   trägt sich selbst in den PATH ein und wird danach wieder gelöscht.
+
+Stufe 2 ist der Grund, dass das Setup auch auf verwalteten Rechnern
+funktioniert: dort ist der Microsoft Store meist gesperrt, und ohne Store gibt
+es kein winget.
+
+Die Version für Stufe 2 wird zur Laufzeit ermittelt — Verzeichnisliste von
+python.org, neueste zuerst, und für jede Kandidatenversion wird geprüft, ob der
+Installer wirklich existiert. Das ist nötig, weil python.org das Verzeichnis
+einer Version schon anlegt, wenn darin nur Vorabdateien liegen: `3.15.0/`
+existiert derzeit, `python-3.15.0-amd64.exe` gibt es aber nicht. Ohne diese
+Prüfung würde das Skript auf eine unfertige Version zeigen. `amd64`, `arm64`
+und 32-Bit werden unterschieden.
 
 **Linux: venv fehlt.** Unter Debian und Ubuntu ist das ein eigenes Paket. Das
 Skript prüft es vorab und nennt den Befehl (`sudo apt install python3-venv`).
