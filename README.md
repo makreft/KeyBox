@@ -11,9 +11,9 @@ Ein Befehl, dann ist die komplette Umgebung da:
 ./scripts/setup.sh
 ```
 
-```powershell
-# Windows
-powershell -ExecutionPolicy Bypass -File scripts\setup.ps1
+```bat
+REM Windows
+scripts\setup.cmd
 ```
 
 Das Skript installiert PlatformIO Core in `~/.platformio/penv`, lädt die
@@ -27,11 +27,48 @@ Mehrfaches Ausführen schadet nicht — es aktualisiert dann nur.
 | `--skip-udev` | udev-Regeln nicht anfassen (Linux) |
 | `--skip-editor` / `-SkipEditor` | keine Editor-Extensions installieren |
 | `-SkipPath` | Benutzer-PATH nicht verändern (Windows) |
+| `-CheckOnly` | nur prüfen und berichten, nichts ändern (Windows) |
+| `-NoPythonInstall` | Python nicht per winget nachinstallieren (Windows) |
 
-Braucht Python 3.6+. Unter Debian und Ubuntu fehlt oft das venv-Modul — das
-Skript sagt es und nennt das nachzuinstallierende Paket. Die udev-Regeln
-brauchen Root; läuft `sudo` nicht ohne Rückfrage, gibt das Skript den Befehl
-zum Kopieren aus, statt auf eine Passworteingabe zu warten.
+### Wenn etwas nicht klappt
+
+**Windows, zuerst immer:**
+
+```bat
+scripts\setup.cmd -CheckOnly
+```
+
+Das ändert nichts und zeigt, was gefunden wurde — Python samt Pfad, ob
+PlatformIO schon da ist, ob `winget` und eine Editor-CLI existieren und welche
+COM-Ports belegt sind. Die Ausgabe reicht meist zur Diagnose.
+
+`scripts\setup.cmd` statt `setup.ps1` direkt aufzurufen ist wichtig: der
+Wrapper setzt `-ExecutionPolicy Bypass`, sonst bricht Windows mit „die
+Ausführung von Skripts ist deaktiviert" ab.
+
+**„Python nicht gefunden", obwohl Python installiert ist.** Vier Ursachen, das
+Skript deckt inzwischen alle ab:
+
+| Ursache | Was das Skript tut |
+|---|---|
+| PATH der offenen Shell ist veraltet | liest den PATH aus der Registry neu ein |
+| Microsoft-Store-Stub in `WindowsApps` | erkennt und überspringt ihn — das ist kein Interpreter, nur eine Weiterleitung in den Store |
+| ohne „Add to PATH" installiert | sucht in Registry (HKCU und HKLM), `%LOCALAPPDATA%\Programs\Python`, Program Files, `C:\Python3*` |
+| gar kein Python | installiert es per `winget` und sucht erneut |
+
+Bleibt es dabei: Python von [python.org](https://www.python.org/downloads/)
+installieren und **„Add python.exe to PATH" ankreuzen**. Die Store-Version
+funktioniert nicht zuverlässig.
+
+**Linux: venv fehlt.** Unter Debian und Ubuntu ist das ein eigenes Paket. Das
+Skript prüft es vorab und nennt den Befehl (`sudo apt install python3-venv`).
+
+**Linux: udev-Regeln.** Die brauchen Root. Läuft `sudo` nicht ohne Rückfrage,
+gibt das Skript den Befehl zum Kopieren aus, statt auf eine Passworteingabe zu
+warten.
+
+**`pio` wird nach dem Setup nicht gefunden.** Neues Terminal öffnen — der
+PATH-Eintrag gilt in bereits offenen Fenstern nicht.
 
 ## Hardware
 
