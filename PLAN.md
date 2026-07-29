@@ -107,7 +107,13 @@ suchen.
 
 ## Karten für den Test
 
-Aus dem Log vom 28.07.:
+Die UIDs unten sind **Platzhalter**, nicht die echten Karten — dieses Repo ist
+öffentlich, und eine UID lässt sich auf „Magic"-Karten frei schreiben. Wer die
+Liste der zugelassenen UIDs kennt, kann sich eine passende Karte bauen. Die
+echten Werte stehen im seriellen Monitor, wenn du die Karte auflegst.
+
+Struktur und Präfixe sind erhalten geblieben: `04` kennzeichnet NXP,
+`08` bei einer 4-Byte-UID eine Zufallskennung.
 
 | UID | SAK | Typ | Als Testkarte |
 |---|---|---|---|
