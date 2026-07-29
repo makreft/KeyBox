@@ -7,3 +7,7 @@ compile_commands.json
 .vscode/c_cpp_properties.json
 .vscode/launch.json
 .vscode/ipch/
+
+# Wird von der PlatformIO-Extension bei jedem Projektstart neu erzeugt.
+# Die passenden Extensions installiert scripts/setup.sh je nach Editor.
+.vscode/extensions.json
