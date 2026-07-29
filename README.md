@@ -2,6 +2,37 @@
 
 Schlüsselbox mit Arduino M0 Pro und M5Stack Unit RFID2 (WS1850S).
 
+## Einrichtung
+
+Ein Befehl, dann ist die komplette Umgebung da:
+
+```bash
+# Linux und macOS
+./scripts/setup.sh
+```
+
+```powershell
+# Windows
+powershell -ExecutionPolicy Bypass -File scripts\setup.ps1
+```
+
+Das Skript installiert PlatformIO Core in `~/.platformio/penv`, lädt die
+SAMD21-Toolchain samt Bibliotheken (rund 200 MB, dauert beim ersten Mal ein
+paar Minuten), richtet unter Linux die udev-Regeln für den Debugger ein,
+installiert die Editor-Extensions und baut das Projekt einmal zur Kontrolle.
+Mehrfaches Ausführen schadet nicht — es aktualisiert dann nur.
+
+| Option | Wirkung |
+|---|---|
+| `--skip-udev` | udev-Regeln nicht anfassen (Linux) |
+| `--skip-editor` / `-SkipEditor` | keine Editor-Extensions installieren |
+| `-SkipPath` | Benutzer-PATH nicht verändern (Windows) |
+
+Braucht Python 3.6+. Unter Debian und Ubuntu fehlt oft das venv-Modul — das
+Skript sagt es und nennt das nachzuinstallierende Paket. Die udev-Regeln
+brauchen Root; läuft `sudo` nicht ohne Rückfrage, gibt das Skript den Befehl
+zum Kopieren aus, statt auf eine Passworteingabe zu warten.
+
 ## Hardware
 
 | Teil | Detail |
@@ -114,18 +145,12 @@ Auf Open VSX gibt es dafür einen angepassten Port:
 LordImmaculate.platformio-ide   ("PlatformIO IDE for VSCodium/Cursor")
 ```
 
+Beides erledigt `scripts/setup.sh` bereits — der Abschnitt hier erklärt nur,
+was dabei passiert und warum.
+
 Die Extension bringt kein eigenes PlatformIO mit, sie bedient eine
-Core-Installation. Diese liegt bereits in `~/.platformio/penv` (Core 6.1.19)
-und wird von der Extension gefunden und weiterbenutzt — es wird nichts doppelt
-installiert.
-
-Falls Core neu aufgesetzt werden muss:
-
-```bash
-python3 -m venv ~/.platformio/penv
-~/.platformio/penv/bin/pip install -U platformio
-ln -sf ~/.platformio/penv/bin/pio ~/.local/bin/pio
-```
+Core-Installation in `~/.platformio/penv`, findet die vorhandene und benutzt
+sie weiter. Es wird nichts doppelt installiert.
 
 Auch ganz ohne Extension arbeitsfähig — CLI plus clangd für die
 Editor-Intelligenz:
