@@ -1,0 +1,52 @@
+# KeyBox - udev-Regeln fuer den Arduino M0 Pro
+#
+# Ausfuehrliche Begruendung: README.md, Abschnitt "Warum udev-Regeln noetig sind".
+# Kurzfassung: Der Upload laeuft nicht ueber den seriellen Port, sondern ueber
+# OpenOCD gegen den EDBG-Debugchip auf dem Board. Dessen USB- und HID-Knoten
+# gehoeren unter Linux per Default root:root mit Mode 0600. OpenOCD laeuft als
+# normaler Nutzerprozess und scheitert deshalb mit
+#     Error: unable to open CMSIS-DAP device 0x3eb:0x2111
+#
+# Installation:
+#   sudo install -m 644 tools/99-keybox-udev.rules /etc/udev/rules.d/
+#   sudo udevadm control --reload-rules && sudo udevadm trigger
+#
+# Kontrolle: der EDBG-hidraw-Knoten muss crw-rw-rw- sein
+#   for h in /sys/class/hidraw/*; do ... ; done   (siehe README)
+
+
+# --- Programming-/Debug-Port (Environment m0pro) ----------------------------
+#
+# Atmel EDBG, 03eb:2111, Produkt-String "EDBG CMSIS-DAP".
+# Auf diesem Board verifiziert.
+#
+# OpenOCD spricht CMSIS-DAP v1 ueber HID. Mit dem hidraw-Backend von hidapi
+# braucht es Zugriff auf /dev/hidrawN. Bei hidraw-Geraeten stehen idVendor und
+# idProduct nicht am Geraet selbst, sondern am USB-Elterngeraet - ATTRS{}
+# durchsucht die Elternkette, deshalb funktioniert der Match hier.
+KERNEL=="hidraw*", ATTRS{idVendor}=="03eb", ATTRS{idProduct}=="2111", MODE="0666"
+
+# Andere OpenOCD-Builds nutzen statt hidraw den libusb-Backend und greifen
+# direkt auf den USB-Knoten unter /dev/bus/usb zu. Beide Pfade abdecken, damit
+# die Regel unabhaengig vom Build funktioniert.
+#
+# ID_MM_DEVICE_IGNORE haelt ausserdem den ModemManager davon ab, den
+# CDC-Anteil des EDBG als Modem zu sondieren - das kann sonst die ersten
+# Sekunden nach dem Anstecken den Port blockieren.
+SUBSYSTEM=="usb", ATTRS{idVendor}=="03eb", ATTRS{idProduct}=="2111", MODE="0666", ENV{ID_MM_DEVICE_IGNORE}="1"
+
+
+# --- Native-USB-Port (Environment m0pro_native) -----------------------------
+#
+# SAM-BA-Bootloader des SAMD21, angesprochen von bossac.
+# Diese ID ist aus PlatformIOs eigener Regeldatei uebernommen und auf diesem
+# Board nicht selbst geprueft - der Programming-Port ist der Standardweg.
+SUBSYSTEM=="usb", ATTRS{idVendor}=="03eb", ATTRS{idProduct}=="6124", MODE="0666", ENV{ID_MM_DEVICE_IGNORE}="1"
+
+
+# --- Hinweis zu MODE="0666" -------------------------------------------------
+#
+# 0666 gibt jedem lokalen Nutzer Zugriff auf den Debugger. Auf einer
+# Entwicklungsmaschine ist das ueblich und entspricht PlatformIOs Vorgabe.
+# Strenger geht es mit systemd-logind: MODE="0666" durch TAG+="uaccess"
+# ersetzen, dann bekommt nur die aktive Login-Session Zugriff.
